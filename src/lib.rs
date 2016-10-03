@@ -3,6 +3,16 @@
 
 mod error;
 
+pub fn from_base64(s: &str) -> Result<Vec<u8>, error::Error> {
+    let mut ret = Vec::new();
+    Ok(ret)
+}
+
+pub fn to_base64(bytes: &[u8]) -> String {
+    let mut ret = String::new();
+    ret
+}
+
 /// Convert a string in hex notation to a vector of bytes.
 pub fn from_hex(s: &str) -> Result<Vec<u8>, error::Error> {
     fn unhex(c: char) -> Result<u8, error::Error> {
