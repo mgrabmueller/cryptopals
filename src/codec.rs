@@ -1,6 +1,10 @@
 // Copyright 2016 Martin Grabmueller. See the LICENSE file at the
 // top-level directory of this distribution for license information.
 
+//! Various encoding and decoding algorithms, to decode readable
+//! strings to byte vectors and vice versa.
+
+/// Standard BASE64 encoding.
 pub mod base64 {
     use ::error;
     
@@ -232,6 +236,7 @@ pub mod base64 {
     }
 }
 
+/// Standard hex encoding.
 pub mod hex {
     use ::error;
 

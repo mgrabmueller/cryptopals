@@ -1,6 +1,8 @@
 // Copyright 2016 Martin Grabmueller. See the LICENSE file at the
 // top-level directory of this distribution for license information.
 
+//! Errors used in the crate and the corresponding binaries.
+
 use std::io;
 use std::fmt;
 use std::error;
