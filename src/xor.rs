@@ -29,22 +29,58 @@ pub fn xor_bytes(b0: &[u8], b1: &[u8]) -> Vec<u8> {
     res
 }
 
-static LETTER_ORDER: &'static [u8] = b"etaoinshrdlucmfwypvbg kjqxz";
+static LETTER_FREQS: [(char, f32); 28] = [
+    ('e', 12.49),
+    ('t', 9.28),
+    (' ', 9.00),
+    ('a', 8.04),
+    ('o', 7.64),
+    ('i', 7.57),
+    ('n', 7.23),
+    ('s', 6.51),
+    ('r', 6.28),
+    ('h', 5.05),
+    ('l', 4.07),
+    ('d', 3.82),
+    ('c', 3.34),
+    ('u', 2.73),
+    ('m', 2.51),
+    ('f', 2.40),
+    ('p', 2.14),
+    ('g', 1.87),
+    ('w', 1.68),
+    ('y', 1.66),
+    ('b', 1.48),
+    ('v', 1.05),
+    ('\n', 1.00),
+    ('k', 0.54),
+    ('x', 0.23),
+    ('j', 0.16),
+    ('q', 0.12),
+    ('z', 0.09),
+];
 
 fn score_english(msg: &[u8]) -> f32 {
+    if msg.len() == 0 {
+        return 0.0;
+    }
+
     let mut score = 0.0;
     for b in msg {
         let c = (*b).to_ascii_lowercase() as char;
-        if let Some(_) = LETTER_ORDER.iter().position(|&x| x == c as u8) {
-            score += 1.0;
+        if let Some(&(_, f)) = LETTER_FREQS.iter().find(|&&(d, _)| d == c) {
+            score += f;
         }
     }
+    score /= msg.len() as f32;
     score
 }
 
+const THRESHOLD: f32 = 5.0;
+
 /// Attempt to crack a single-byte XOR encrypted message.  On success,
 /// the key byte is returned, `None` otherwise.
-pub fn crack_single_byte_xor(msg: &[u8]) -> Option<u8> {
+pub fn crack_single_byte_xor(msg: &[u8]) -> Option<(u8, Vec<u8>)> {
     let mut solutions = Vec::new();
     for key in 0..255u8 {
         let output = apply(key, &msg);
@@ -56,7 +92,11 @@ pub fn crack_single_byte_xor(msg: &[u8]) -> Option<u8> {
                Some(o) => o,
                _ => ::std::cmp::Ordering::Less
     });
-    Some(sl[0].1)
+    if sl[0].0 >= THRESHOLD {
+        Some((sl[0].1, sl[0].2.iter().cloned().collect()))
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]
@@ -106,7 +146,11 @@ mod tests {
     #[test]
     fn crack_1() {
         let input = codec::hex::decode("1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736").unwrap();
-        let res = crack_single_byte_xor(&input);
-        assert_eq!(Some(88), res);
+        let res = crack_single_byte_xor(&input).unwrap();
+        assert_eq!((88, vec![67, 111, 111, 107, 105, 110, 103, 32,
+                             77, 67, 39, 115, 32, 108, 105, 107, 101,
+                             32, 97, 32, 112, 111, 117, 110, 100, 32,
+                             111, 102, 32, 98, 97, 99, 111, 110]),
+                   res);
     }
 }
