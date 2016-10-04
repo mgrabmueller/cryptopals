@@ -6,10 +6,20 @@
 
 use std::ascii::AsciiExt;
 
-/// Apply the byte `key` via xor to all the bytes in `msg`, and return
+/// Apply the byte `key` via XOR to all the bytes in `msg`, and return
 /// the result as a vector.
-pub fn apply(key: u8, msg: &[u8]) -> Vec<u8> {
+pub fn one_byte(key: u8, msg: &[u8]) -> Vec<u8> {
     msg.iter().map(|c| *c ^ key).collect()
+}
+
+/// Apply the key `key` to the message `msg` with XOR, by repeating
+/// the key as often as necessary.
+pub fn repeating(key: &[u8], msg: &[u8]) -> Vec<u8> {
+    assert!(key.len() > 0);
+    
+    msg.chunks(key.len())
+        .flat_map(|chunk| xor_bytes(chunk, &key[0..chunk.len()]))
+        .collect()
 }
 
 /// XOR all the corresponding bytes in `b0` and `b1`, respectively,
@@ -83,7 +93,7 @@ const THRESHOLD: f32 = 5.0;
 pub fn crack_single_byte_xor(msg: &[u8]) -> Option<(u8, Vec<u8>)> {
     let mut solutions = Vec::new();
     for key in 0..255u8 {
-        let output = apply(key, &msg);
+        let output = one_byte(key, &msg);
         let score = score_english(&output);
         solutions.push((score, key, output));
     }
@@ -101,21 +111,21 @@ pub fn crack_single_byte_xor(msg: &[u8]) -> Option<(u8, Vec<u8>)> {
 
 #[cfg(test)]
 mod tests {
-    use super::{apply, xor_bytes, crack_single_byte_xor};
+    use super::{one_byte, xor_bytes, crack_single_byte_xor, repeating};
     use ::codec;
     
     #[test]
     fn apply_empty() {
         let input = vec![];
         let expected: Vec<u8> = vec![];
-        assert_eq!(expected, apply(0x80, &input));
+        assert_eq!(expected, one_byte(0x80, &input));
     }
 
     #[test]
     fn apply_short() {
         let input = vec![0x80, 0x7f, 0xff];
         let expected: Vec<u8> = vec![0x00, 0xff, 0x7f];
-        assert_eq!(expected, apply(0x80, &input));
+        assert_eq!(expected, one_byte(0x80, &input));
     }
 
     #[test]
@@ -153,4 +163,30 @@ mod tests {
                              111, 102, 32, 98, 97, 99, 111, 110]),
                    res);
     }
+
+    #[test]
+    fn repeating_empty() {
+        let input = [];
+        let key = b"northpole";
+        let expected: Vec<u8> = vec![];
+        assert_eq!(expected, repeating(key, &input));
+    }
+
+    #[test]
+    #[should_panic]
+    fn repeating_panic() {
+        let input = [0, 1, 2];
+        let key = [];
+        let expected: Vec<u8> = vec![];
+        assert_eq!(expected, repeating(&key, &input));
+    }
+
+    #[test]
+    fn repeating_1() {
+        let input = b"Burning 'em, if you ain't quick and nimble\nI go crazy when I hear a cymbal";
+        let key = b"ICE";
+        let expected = codec::hex::decode("0b3637272a2b2e63622c2e69692a23693a2a3c6324202d623d63343c2a26226324272765272a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f").unwrap();
+        assert_eq!(expected, repeating(key, input));
+    }
+
 }
