@@ -70,7 +70,7 @@ static LETTER_FREQS: [(char, f32); 28] = [
     ('z', 0.09),
 ];
 
-fn score_english(msg: &[u8]) -> f32 {
+pub fn score_english(msg: &[u8]) -> f32 {
     if msg.len() == 0 {
         return 0.0;
     }
