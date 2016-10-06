@@ -6,6 +6,8 @@
 
 use std::ascii::AsciiExt;
 
+use super::distance;
+
 /// Apply the byte `key` via XOR to all the bytes in `msg`, and return
 /// the result as a vector.
 pub fn one_byte(key: u8, msg: &[u8]) -> Vec<u8> {
@@ -39,10 +41,13 @@ pub fn xor_bytes(b0: &[u8], b1: &[u8]) -> Vec<u8> {
     res
 }
 
+// This list is stolen from
+// https://github.com/ctz/cryptopals/blob/master/util-1.h.
+//static LETTER_ORDER: &'static str = "etaonrishd .,\nlfcmugypwbvkjxqz-_!?'\"/1234567890*";
+
 static LETTER_FREQS: [(char, f32); 28] = [
     ('e', 12.49),
     ('t', 9.28),
-    (' ', 9.00),
     ('a', 8.04),
     ('o', 7.64),
     ('i', 7.57),
@@ -52,6 +57,7 @@ static LETTER_FREQS: [(char, f32); 28] = [
     ('h', 5.05),
     ('l', 4.07),
     ('d', 3.82),
+    (' ', 3.50),
     ('c', 3.34),
     ('u', 2.73),
     ('m', 2.51),
@@ -77,16 +83,46 @@ pub fn score_english(msg: &[u8]) -> f32 {
 
     let mut score = 0.0;
     for b in msg {
+        // if *b >= b'A' && *b <= b'Z' {
+        //     score -= 3.0;
+        // }
         let c = (*b).to_ascii_lowercase() as char;
+        // if let Some(pos) = LETTER_ORDER.bytes().position(|d| d == c as u8) {
+        //     score += ((LETTER_ORDER.len() - pos) * 2) as f32;
+        // } else {
+        // }
         if let Some(&(_, f)) = LETTER_FREQS.iter().find(|&&(d, _)| d == c) {
-            score += f;
+            match *b {
+                b'A'...b'Z' =>
+                    score += f/10.0,
+                _ =>
+                    score += f,
+            }
+        } else {
+            match *b {
+                b'.' | b'\'' | b'\"' | b'!' | b'?' => {
+                    score += 0.5;
+                },
+                _ => {
+                    if *b < 32 {
+                        score -= 10.0;
+                    } else if *b > 127 {
+                        score -= 5.0;
+                    }
+                },
+            }
         }
     }
     score /= msg.len() as f32;
     score
+    // if score < 0.0 {
+    //     0.0
+    // } else {
+    //     score
+    // }
 }
 
-const THRESHOLD: f32 = 5.0;
+const THRESHOLD: f32 = 4.0;
 
 /// Attempt to crack a single-byte XOR encrypted message.  On success,
 /// the key byte is returned, `None` otherwise.
@@ -95,7 +131,7 @@ pub fn crack_single_byte_xor(msg: &[u8]) -> Option<(u8, Vec<u8>)> {
     for key in 0..255u8 {
         let output = one_byte(key, &msg);
         let score = score_english(&output);
-        solutions.push((score, key, output));
+        solutions.push((score, key, output.clone()));
     }
     let mut sl = &mut solutions[..];
     sl.sort_by(|&(s0, _, _), &(s1, _, _)| match s1.partial_cmp(&s0) {
@@ -109,9 +145,83 @@ pub fn crack_single_byte_xor(msg: &[u8]) -> Option<(u8, Vec<u8>)> {
     }
 }
 
+const MIN_KEYSIZE: usize = 2;
+const MAX_KEYSIZE: usize = 40;
+
+fn detect_keysize(c: &[u8]) -> Vec<usize> {
+    let mut scores = Vec::with_capacity(3);
+    for keysize in MIN_KEYSIZE..::std::cmp::min(c.len()/4, MAX_KEYSIZE+1) {
+        let i1 = &c[0..keysize];
+        let i2 = &c[keysize..keysize*2];
+        let i3 = &c[keysize*2..keysize*3];
+        let i4 = &c[keysize*3..keysize*4];
+        let dist = ((distance::hamming(i1, i2) +
+                     distance::hamming(i1, i3) +
+                     distance::hamming(i1, i4)) / 4) as f32 / keysize as f32;
+        scores.push((dist, keysize));
+    }
+    &scores[..].sort_by(|&(d1, _), &(d2, _)|
+                        match d1.partial_cmp(&d2) {
+                            None => ::std::cmp::Ordering::Less,
+                            Some(o) => o,
+                        });
+    scores.into_iter().take(15).map(|(_, k)| k).collect()
+}
+
+fn transpose(c: &[u8], keysize: usize) -> Vec<Vec<u8>> {
+    let mut transposed = Vec::with_capacity(keysize);
+    for _ in 0..keysize {
+        transposed.push(Vec::with_capacity(c.len() / keysize));
+    }
+    for (i, &b) in c.iter().enumerate() {
+        transposed[i % keysize].push(b);
+    }
+    transposed
+}
+
+fn break_it(c: &[u8], keysize: usize) -> Vec<u8> {
+    let transposed = transpose(c, keysize);
+    let mut key = Vec::with_capacity(keysize);
+    for i in 0..keysize {
+//        println!("{}", codec::hex::encode(&transposed[i]));
+        if let Some((k, _)) = crack_single_byte_xor(&transposed[i]) {
+//            println!("found key: {}", k);
+//            println!("{:?}", String::from_utf8_lossy(&d));
+            key.push(k);
+        } else {
+//            println!("cannot find key");
+            key.push(0);
+        }
+    }
+    key
+}
+
+/// Attempt to decrypt message `c`, which is assumed to be encrypted
+/// with a repeating XOR scheme with a key length somewhere between 2
+/// and 40 bytes.  The plaintext is assumed to be English text in
+/// ASCII encoding.
+pub fn crack_repeating_xor(c: &[u8]) -> Vec<(Vec<u8>, Vec<u8>)> {
+    let keysizes = detect_keysize(&c);
+    let mut results = Vec::with_capacity(keysizes.len());
+    for keysize in keysizes {
+        println!("keysize: {}", keysize);
+        let key = break_it(&c, keysize);
+        let decoded = repeating(&key, &c);
+        let score = score_english(&decoded);
+        results.push((score, key, decoded));
+    }
+    &results[..].sort_by(|&(d1, _, _), &(d2, _, _)|
+                        match d2.partial_cmp(&d1) {
+                            None => ::std::cmp::Ordering::Less,
+                            Some(o) => o,
+                        });
+    results.into_iter().map(|(_, k, d)| (k, d)).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::{one_byte, xor_bytes, crack_single_byte_xor, repeating};
+    use super::{crack_repeating_xor};
     use ::codec;
     
     #[test]
@@ -189,4 +299,18 @@ mod tests {
         assert_eq!(expected, repeating(key, input));
     }
 
+    #[test]
+    fn crack_repeating() {
+        let key = b"ICE";
+        let input = b"Burning 'em, if you ain't quick and nimble\nI go crazy when I hear a cymbal";
+        let encrypted = repeating(key, input);
+        let decrypted = crack_repeating_xor(&encrypted);
+        let mut found = false;
+        for &(_, ref d) in decrypted.iter() {
+            if &d[..] == &input[..] {
+                found = true;
+            }
+        }
+        assert!(found);
+    }
 }

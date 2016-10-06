@@ -11,3 +11,4 @@ extern crate quickcheck;
 pub mod error;
 pub mod codec;
 pub mod xor;
+pub mod distance;

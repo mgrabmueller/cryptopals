@@ -9,7 +9,7 @@ pub mod base64 {
     use ::error;
     
     static BASE64_CHARS: &'static [u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789./";
+        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
     /// Decode a string in BASE64 to a vector of bytes. Ignore all
     /// whitespace.
