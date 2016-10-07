@@ -12,3 +12,4 @@ pub mod error;
 pub mod codec;
 pub mod xor;
 pub mod distance;
+pub mod language;

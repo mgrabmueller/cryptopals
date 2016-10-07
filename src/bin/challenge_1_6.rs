@@ -14,7 +14,7 @@ pub fn main() {
     let _ = f.read_to_end(&mut hc).unwrap();
     let c = codec::base64::decode(&String::from_utf8(hc).unwrap()).unwrap();
 
-    for &(ref key, ref decoded) in xor::crack_repeating_xor(&c).iter().take(1) {
+    for &(ref key, ref decoded) in xor::crack_repeating_xor(&c, 4).iter().take(1) {
         println!("key: {:?}", String::from_utf8_lossy(&key));
         println!("decoded: {}", String::from_utf8_lossy(&decoded));
     }

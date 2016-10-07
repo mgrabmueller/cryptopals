@@ -4,9 +4,8 @@
 //! Collection of XOR-base "encryption" routines.  This is no real
 //! crypto, but can be used to implement better ciphers.
 
-use std::ascii::AsciiExt;
-
 use super::distance;
+use super::language;
 
 /// Apply the byte `key` via XOR to all the bytes in `msg`, and return
 /// the result as a vector.
@@ -41,88 +40,14 @@ pub fn xor_bytes(b0: &[u8], b1: &[u8]) -> Vec<u8> {
     res
 }
 
-// This list is stolen from
-// https://github.com/ctz/cryptopals/blob/master/util-1.h.
-//static LETTER_ORDER: &'static str = "etaonrishd .,\nlfcmugypwbvkjxqz-_!?'\"/1234567890*";
-
-static LETTER_FREQS: [(char, f32); 28] = [
-    ('e', 12.49),
-    ('t', 9.28),
-    ('a', 8.04),
-    ('o', 7.64),
-    ('i', 7.57),
-    ('n', 7.23),
-    ('s', 6.51),
-    ('r', 6.28),
-    ('h', 5.05),
-    ('l', 4.07),
-    ('d', 3.82),
-    (' ', 3.50),
-    ('c', 3.34),
-    ('u', 2.73),
-    ('m', 2.51),
-    ('f', 2.40),
-    ('p', 2.14),
-    ('g', 1.87),
-    ('w', 1.68),
-    ('y', 1.66),
-    ('b', 1.48),
-    ('v', 1.05),
-    ('\n', 1.00),
-    ('k', 0.54),
-    ('x', 0.23),
-    ('j', 0.16),
-    ('q', 0.12),
-    ('z', 0.09),
-];
-
 pub fn score_english(msg: &[u8]) -> f32 {
     if msg.len() == 0 {
         return 0.0;
     }
-
-    let mut score = 0.0;
-    for b in msg {
-        // if *b >= b'A' && *b <= b'Z' {
-        //     score -= 3.0;
-        // }
-        let c = (*b).to_ascii_lowercase() as char;
-        // if let Some(pos) = LETTER_ORDER.bytes().position(|d| d == c as u8) {
-        //     score += ((LETTER_ORDER.len() - pos) * 2) as f32;
-        // } else {
-        // }
-        if let Some(&(_, f)) = LETTER_FREQS.iter().find(|&&(d, _)| d == c) {
-            match *b {
-                b'A'...b'Z' =>
-                    score += f/10.0,
-                _ =>
-                    score += f,
-            }
-        } else {
-            match *b {
-                b'.' | b'\'' | b'\"' | b'!' | b'?' => {
-                    score += 0.5;
-                },
-                _ => {
-                    if *b < 32 {
-                        score -= 10.0;
-                    } else if *b > 127 {
-                        score -= 5.0;
-                    }
-                },
-            }
-        }
-    }
-    score /= msg.len() as f32;
-    score
-    // if score < 0.0 {
-    //     0.0
-    // } else {
-    //     score
-    // }
+    (language::english::score_string(msg) as f32) / (msg.len() as f32)
 }
 
-const THRESHOLD: f32 = 4.0;
+const THRESHOLD: f32 = 100.0;
 
 /// Attempt to crack a single-byte XOR encrypted message.  On success,
 /// the key byte is returned, `None` otherwise.
@@ -148,7 +73,7 @@ pub fn crack_single_byte_xor(msg: &[u8]) -> Option<(u8, Vec<u8>)> {
 const MIN_KEYSIZE: usize = 2;
 const MAX_KEYSIZE: usize = 40;
 
-fn detect_keysize(c: &[u8]) -> Vec<usize> {
+fn detect_keysize(c: &[u8], max_key_sizes: usize) -> Vec<usize> {
     let mut scores = Vec::with_capacity(3);
     for keysize in MIN_KEYSIZE..::std::cmp::min(c.len()/4, MAX_KEYSIZE+1) {
         let i1 = &c[0..keysize];
@@ -165,7 +90,7 @@ fn detect_keysize(c: &[u8]) -> Vec<usize> {
                             None => ::std::cmp::Ordering::Less,
                             Some(o) => o,
                         });
-    scores.into_iter().take(15).map(|(_, k)| k).collect()
+    scores.into_iter().take(max_key_sizes).map(|(_, k)| k).collect()
 }
 
 fn transpose(c: &[u8], keysize: usize) -> Vec<Vec<u8>> {
@@ -200,8 +125,8 @@ fn break_it(c: &[u8], keysize: usize) -> Vec<u8> {
 /// with a repeating XOR scheme with a key length somewhere between 2
 /// and 40 bytes.  The plaintext is assumed to be English text in
 /// ASCII encoding.
-pub fn crack_repeating_xor(c: &[u8]) -> Vec<(Vec<u8>, Vec<u8>)> {
-    let keysizes = detect_keysize(&c);
+pub fn crack_repeating_xor(c: &[u8], max_key_sizes: usize) -> Vec<(Vec<u8>, Vec<u8>)> {
+    let keysizes = detect_keysize(&c, max_key_sizes);
     let mut results = Vec::with_capacity(keysizes.len());
     for keysize in keysizes {
         println!("keysize: {}", keysize);
@@ -304,9 +229,11 @@ mod tests {
         let key = b"ICE";
         let input = b"Burning 'em, if you ain't quick and nimble\nI go crazy when I hear a cymbal";
         let encrypted = repeating(key, input);
-        let decrypted = crack_repeating_xor(&encrypted);
+        let decrypted = crack_repeating_xor(&encrypted, 15);
         let mut found = false;
         for &(_, ref d) in decrypted.iter() {
+            let scr = ::language::english::score_string(&d);
+            println!("{} {:?}", scr, String::from_utf8_lossy(&d));
             if &d[..] == &input[..] {
                 found = true;
             }
