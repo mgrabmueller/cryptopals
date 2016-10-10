@@ -14,3 +14,4 @@ pub mod xor;
 pub mod distance;
 pub mod language;
 pub mod cipher;
+pub mod padding;
