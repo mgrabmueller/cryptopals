@@ -43,6 +43,15 @@ pub mod pkcs7 {
             assert_eq!(expected, pad(s, 16));
         }
         
+        #[test]
+        fn pad_20() {
+            let input = b"YELLOW SUBMARINE";
+            let output = pad(input, 20);
+            let mut expected: Vec<u8> = Vec::new();
+            expected.extend(b"YELLOW SUBMARINE\x04\x04\x04\x04");
+            assert_eq!(expected, output);
+        }
+
         quickcheck! {
             fn prop_pad_len(xs: Vec<u8>) -> bool {
                 let padded = pad(&xs, 16);
