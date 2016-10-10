@@ -222,26 +222,18 @@ fn mix_columns(s: &mut [[u8; 4]]) {
         s[3][c] = t[3];
     }
 }
-    
-/// Encrypt the plaintext block `input` with AES, using the given key.
-/// The ciphertext output is placed in `output`.
-pub fn encrypt(key: &AesKey, input: &[u8; 16], output: &mut [u8; 16]) {
-    let (keysize, keybytes): (usize, Vec<_>) = match key {
-        &AesKey::Key128(AesKey128 {key}) => (16, key[..].iter().cloned().collect()),
-        &AesKey::Key192(AesKey192 {key}) => (24, key[..].iter().cloned().collect()),
-        &AesKey::Key256(AesKey256 {key}) => (32, key[..].iter().cloned().collect()),
-    };
+
+/// Perform the encryption of one block. `w` is the key schedule, `nr`
+/// the number of rounds and `input` and `output` are the in- and
+/// output blocks, respectively.
+fn encrypt_block(w: &[[u8; 4]], nr: usize, input: &[u8; 16], output: &mut [u8; 16]) {
     let mut state = [[0u8; 4]; 4];
-    let mut w = [[0u8; 4]; 60];
 
     for r in 0..4 {
         for c in 0..4 {
             state[r][c] = input[r + (4 * c)];
         }
     }
-
-    let nr = (keysize >> 2) + 6;
-    compute_key_schedule(&keybytes, &mut w);
 
     add_round_key(&mut state, &w[0..4]);
 
@@ -258,6 +250,51 @@ pub fn encrypt(key: &AesKey, input: &[u8; 16], output: &mut [u8; 16]) {
             output[r + (4 * c)] = state[r][c];
         }
     }
+}
+
+/// Encrypt the plaintext block `input` with AES, using the given key.
+/// The ciphertext output is placed in `output`.
+pub fn encrypt(key: &AesKey, input: &[u8; 16], output: &mut [u8; 16]) {
+    let (keysize, keybytes): (usize, Vec<_>) = match key {
+        &AesKey::Key128(AesKey128 {key}) => (16, key[..].iter().cloned().collect()),
+        &AesKey::Key192(AesKey192 {key}) => (24, key[..].iter().cloned().collect()),
+        &AesKey::Key256(AesKey256 {key}) => (32, key[..].iter().cloned().collect()),
+    };
+    let mut w = [[0u8; 4]; 60];
+
+    let nr = (keysize >> 2) + 6;
+    compute_key_schedule(&keybytes, &mut w);
+
+    encrypt_block(&w, nr, input, output);
+}
+
+/// Encrypt the arbitrary-length plaintext block `input` with AES in
+/// ECB mode, using the given key.  The ciphertext output is returned
+/// as a vector of bytes.
+pub fn encrypt_ecb(key: &AesKey, plaintext: &[u8]) -> Vec<u8> {
+    let (keysize, keybytes): (usize, Vec<_>) = match key {
+        &AesKey::Key128(AesKey128 {key}) => (16, key[..].iter().cloned().collect()),
+        &AesKey::Key192(AesKey192 {key}) => (24, key[..].iter().cloned().collect()),
+        &AesKey::Key256(AesKey256 {key}) => (32, key[..].iter().cloned().collect()),
+    };
+    let mut w = [[0u8; 4]; 60];
+    let padded_plaintext = ::padding::pkcs7::pad(&plaintext, 16);
+    let mut result = Vec::with_capacity(padded_plaintext.len());
+
+    let nr = (keysize >> 2) + 6;
+    compute_key_schedule(&keybytes, &mut w);
+    let mut input = [0u8; 16];
+    let mut output = [0u8; 16];
+    for chunk in padded_plaintext.chunks(16) {
+        for x in 0..16 {
+            input[x] = chunk[x];
+        }
+        encrypt_block(&w, nr, &input, &mut output);
+        for x in 0..16 {
+            result.push(output[x]);
+        }
+    }
+    result
 }
 
 /// Inverse of the shift_rows operation, used in decryption.
@@ -311,25 +348,16 @@ fn inv_mix_columns(s: &mut [[u8; 4]; 4]) {
     }
 }
 
-/// Decrypt the ciphertext block `input` with AES, using the given
-/// key.  The plaintext output is placed in `output`.
-pub fn decrypt(key: &AesKey, input: &[u8; 16], output: &mut [u8; 16]) {
-    let (keysize, keybytes): (usize, Vec<_>) = match key {
-        &AesKey::Key128(AesKey128 {key}) => (16, key[..].iter().cloned().collect()),
-        &AesKey::Key192(AesKey192 {key}) => (24, key[..].iter().cloned().collect()),
-        &AesKey::Key256(AesKey256 {key}) => (32, key[..].iter().cloned().collect()),
-    };
+/// Perform the encryption of one block. `w` is the key schedule, `nr`
+/// the number of rounds and `input` and `output` are the in- and
+/// output blocks, respectively.
+fn decrypt_block(w: &[[u8; 4]], nr: usize, input: &[u8; 16], output: &mut [u8; 16]) {
     let mut state = [[0u8; 4]; 4];
-    let mut w = [[0u8; 4]; 60];
-
     for r in 0..4 {
         for c in 0..4 {
             state[r][c] = input[r + (4 * c)];
         }
     }
-
-    let nr = (keysize >> 2) + 6;
-    compute_key_schedule(&keybytes, &mut w);
 
     add_round_key(&mut state, &w[nr*4..(nr+1)*4]);
 
@@ -350,9 +378,57 @@ pub fn decrypt(key: &AesKey, input: &[u8; 16], output: &mut [u8; 16]) {
     }
 }
 
+/// Decrypt the ciphertext block `input` with AES, using the given
+/// key.  The plaintext output is placed in `output`.
+pub fn decrypt(key: &AesKey, input: &[u8; 16], output: &mut [u8; 16]) {
+    let (keysize, keybytes): (usize, Vec<_>) = match key {
+        &AesKey::Key128(AesKey128 {key}) => (16, key[..].iter().cloned().collect()),
+        &AesKey::Key192(AesKey192 {key}) => (24, key[..].iter().cloned().collect()),
+        &AesKey::Key256(AesKey256 {key}) => (32, key[..].iter().cloned().collect()),
+    };
+    let mut w = [[0u8; 4]; 60];
+
+    let nr = (keysize >> 2) + 6;
+    compute_key_schedule(&keybytes, &mut w);
+
+    decrypt_block(&w, nr, input, output);
+}
+
+/// Decrypt the ciphertext block `input` with AES in ECB mode, using
+/// the given key.  The plaintext output is returned as a byte vector
+pub fn decrypt_ecb(key: &AesKey, ciphertext: &[u8]) -> Vec<u8> {
+    let (keysize, keybytes): (usize, Vec<_>) = match key {
+        &AesKey::Key128(AesKey128 {key}) => (16, key[..].iter().cloned().collect()),
+        &AesKey::Key192(AesKey192 {key}) => (24, key[..].iter().cloned().collect()),
+        &AesKey::Key256(AesKey256 {key}) => (32, key[..].iter().cloned().collect()),
+    };
+    let mut w = [[0u8; 4]; 60];
+    let mut result = Vec::with_capacity(ciphertext.len());
+
+    let nr = (keysize >> 2) + 6;
+    compute_key_schedule(&keybytes, &mut w);
+
+    let mut input = [0u8; 16];
+    let mut output = [0u8; 16];
+    for chunk in ciphertext.chunks(16) {
+        for x in 0..16 {
+            input[x] = chunk[x];
+        }
+        decrypt_block(&w, nr, &input, &mut output);
+        for x in 0..16 {
+            result.push(output[x]);
+        }
+    }
+    let res_len = result.len();
+    let padding_len = result[res_len - 1] as usize;
+    result.truncate(res_len - padding_len);
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::{encrypt, decrypt};
+    use super::{encrypt_ecb, decrypt_ecb};
     use super::{AesKey, AesKey128};
     use ::codec;
 
@@ -404,6 +480,31 @@ mod tests {
         let mut decrypted = [0u8; 16];
         decrypt(&key, &output, &mut decrypted);
         assert_eq!(to_byte_array_16(input), decrypted);
+    }
+
+    #[test]
+    fn encrypt_ecb_0() {
+        let plaintext = b"Cooller";
+        let keybytes = codec::hex::decode("000102030405060708090a0b0c0d0e0f").unwrap();
+        let key = AesKey::Key128(AesKey128{key: to_byte_array_16(&keybytes)});
+        let expected = vec![40, 80, 126, 246, 153, 18, 246, 8, 200, 113,
+                            212, 145, 203, 140, 137, 97];
+            
+        let ciphertext = encrypt_ecb(&key, plaintext);
+        assert_eq!(expected, ciphertext);
+    }
+
+    #[test]
+    fn decrypt_ecb_0() {
+        let ciphertext = vec![40, 80, 126, 246, 153, 18, 246, 8, 200, 113,
+                              212, 145, 203, 140, 137, 97];
+        let expected = vec![b'C', b'o', b'o', b'l', b'l', b'e', b'r'];
+
+        let keybytes = codec::hex::decode("000102030405060708090a0b0c0d0e0f").unwrap();
+        let key = AesKey::Key128(AesKey128{key: to_byte_array_16(&keybytes)});
+
+        let plaintext = decrypt_ecb(&key, &ciphertext);
+        assert_eq!(&expected, &plaintext);
     }
 
 }

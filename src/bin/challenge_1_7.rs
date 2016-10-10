@@ -28,14 +28,6 @@ pub fn main() {
     let keybytes = b"YELLOW SUBMARINE";
     let key = aes::AesKey::Key128(aes::AesKey128{key: to_byte_array_16(keybytes)});
 
-    let mut decrypted: Vec<u8> = Vec::with_capacity(c.len());
-    for chunk in c.chunks(16) {
-        let mut output = [0u8; 16];
-        aes::decrypt(&key, &to_byte_array_16(&chunk), &mut output);
-        decrypted.extend(output.iter());
-    }
-    let dec_len = decrypted.len();
-    let pad_len = decrypted[dec_len-1] as usize;
-    decrypted.truncate(dec_len - pad_len);
+    let decrypted = aes::decrypt_ecb(&key, &c);
     println!("{}", String::from_utf8_lossy(&decrypted));
 }
