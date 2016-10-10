@@ -391,5 +391,128 @@ pub mod hex {
             }
         }
     }
+}
 
+/// Standard binary encoding.
+pub mod bin {
+    use ::error;
+
+    /// Convert a string in binary notation to a vector of
+    /// bytes. Binary strings are big-endian, that means that for each
+    /// byte, the most significant byte comes first in the string
+    /// representation.
+    pub fn decode(s: &str) -> Result<Vec<u8>, error::Error> {
+        fn unbin(c: char) -> Result<u8, error::Error> {
+            match c {
+                '0' => Ok(0),
+                '1' => Ok(1),
+                _ => Err(error::Error::InvalidBinChar(c)),
+            }
+        }
+        
+        let mut it = s.chars();
+        let mut ret = Vec::new();
+        loop {
+            if let Some(c0a) = it.next() {
+                let c0 = try!(unbin(c0a));
+                let c1 = try!(unbin(try!(it.next().ok_or(error::Error::InvalidBinLength))));
+                let c2 = try!(unbin(try!(it.next().ok_or(error::Error::InvalidBinLength))));
+                let c3 = try!(unbin(try!(it.next().ok_or(error::Error::InvalidBinLength))));
+                let c4 = try!(unbin(try!(it.next().ok_or(error::Error::InvalidBinLength))));
+                let c5 = try!(unbin(try!(it.next().ok_or(error::Error::InvalidBinLength))));
+                let c6 = try!(unbin(try!(it.next().ok_or(error::Error::InvalidBinLength))));
+                let c7 = try!(unbin(try!(it.next().ok_or(error::Error::InvalidBinLength))));
+                let b = (c0 << 7) | (c1 << 6) | (c2 << 5) | (c3 << 4) | (c4 << 3) | (c5 << 2) | (c6 << 1) | c7;
+                ret.push(b);
+            } else {
+                break;
+            }
+        }
+        Ok(ret)
+    }
+
+    /// Convert a vector of bytes into a string in binary notation.
+    /// Binary strings are big-endian, that means that for each byte,
+    /// the most significant byte comes first in the string
+    /// representation.
+    pub fn encode(bytes: &[u8]) -> String {
+        let mut ret = String::new();
+        fn enc(b: u8) -> char {
+            if b == 0 {
+                '0'
+            } else {
+                '1'
+            }
+        }
+        for b in bytes {
+            ret.push(enc(b & 0x80));
+            ret.push(enc(b & 0x40));
+            ret.push(enc(b & 0x20));
+            ret.push(enc(b & 0x10));
+            ret.push(enc(b & 0x08));
+            ret.push(enc(b & 0x04));
+            ret.push(enc(b & 0x02));
+            ret.push(enc(b & 0x01));
+        }
+        ret
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::{decode, encode};
+        
+        #[test]
+        fn decode_empty() {
+            let s = "";
+            let expected: Vec<u8> = vec![];
+            assert_eq!(expected, decode(s).unwrap());
+        }
+        
+        #[test]
+        fn decode_1() {
+            let s = "11111111";
+            let expected: Vec<u8> = vec![255];
+            assert_eq!(expected, decode(s).unwrap());
+        }
+        
+        #[test]
+        fn decode_2() {
+            let s = "1111111110000010";
+            let expected: Vec<u8> = vec![255, 130];
+            assert_eq!(expected, decode(s).unwrap());
+        }
+        
+        #[test]
+        fn decode_invalid_char() {
+            let s = "11111112";
+            assert!(decode(s).is_err());
+        }
+
+        #[test]
+        fn decode_invalid_len() {
+            let s = "111";
+            assert!(decode(s).is_err());
+        }
+
+        #[test]
+        fn encode_empty() {
+            let bytes = [];
+            let expected = "";
+            assert_eq!(expected, encode(&bytes));
+        }
+
+        #[test]
+        fn encode_1() {
+            let bytes = [255];
+            let expected = "11111111";
+            assert_eq!(expected, encode(&bytes));
+        }
+
+        #[test]
+        fn encode_2() {
+            let bytes = [255, 130];
+            let expected = "1111111110000010";
+            assert_eq!(expected, encode(&bytes));
+        }
+    }
 }

@@ -22,6 +22,10 @@ pub enum Error {
     InvalidBase64Length,
     /// Base64 string has invalid padding.
     InvalidBase64Padding,
+    /// Binary string contains invalid character.
+    InvalidBinChar(char),
+    /// Binary string has a length that is not divisable by 8.
+    InvalidBinLength,
     /// Some unimplemented functionality was requested.
     Unimplemented(&'static str),
 }
@@ -41,6 +45,10 @@ impl fmt::Display for Error {
                 write!(f, "Invalid base64 string length"),
             Error::InvalidBase64Padding =>
                 write!(f, "Invalid base64 string padding"),
+            Error::InvalidBinLength =>
+                write!(f, "Binary string has non-multiple-of-8 length"),
+            Error::InvalidBinChar(ref ch) =>
+                write!(f, "Invalid binary character: {:?}", ch),
             Error::Unimplemented(ref err) =>
                 write!(f, "unimplemented: {}", err),
         }
@@ -56,6 +64,8 @@ impl error::Error for Error {
             Error::InvalidBase64Char(_) => "invalid base64 character",
             Error::InvalidBase64Length => "invalid base64 string length",
             Error::InvalidBase64Padding => "invalid base64 string padding",
+            Error::InvalidBinChar(_) => "invalid binary character",
+            Error::InvalidBinLength => "binary string has length not divisable by 8",
             Error::Unimplemented(_) => "unimplemented",
         }
     }
@@ -68,6 +78,8 @@ impl error::Error for Error {
             Error::InvalidBase64Char(_) => None,
             Error::InvalidBase64Length => None,
             Error::InvalidBase64Padding => None,
+            Error::InvalidBinChar(_) => None,
+            Error::InvalidBinLength => None,
             Error::Unimplemented(_) => None,
        } 
     }
