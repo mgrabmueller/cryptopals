@@ -27,8 +27,9 @@ pub struct AesKey256 {
     pub key: [u8; 32],
 }
 
-type Block = [u8; 16];
-
+/// `SBOX` implements the sboxes used in the sub_word operation (used
+/// in key schedule generation) and sub_bytes operation (used in the
+/// encryption rounds).
 static SBOX: [[u8; 16]; 16] =
     [[0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5,
       0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76],
@@ -64,6 +65,8 @@ static SBOX: [[u8; 16]; 16] =
       0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16]
     ];
 
+/// `INV_SBOX` implements the inverse of `SBOX` and is used in
+/// decryption.
 static INV_SBOX: [[u8; 16]; 16] =
     [[0x52, 0x09, 0x6a, 0xd5, 0x30, 0x36, 0xa5, 0x38,
       0xbf, 0x40, 0xa3, 0x9e, 0x81, 0xf3, 0xd7, 0xfb],
@@ -98,7 +101,8 @@ static INV_SBOX: [[u8; 16]; 16] =
      [0x17, 0x2b, 0x04, 0x7e, 0xba, 0x77, 0xd6, 0x26,
       0xe1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0c, 0x7d]
     ];
-      
+
+/// rot_word operation.  This is used in generation the key schedule.
 fn rot_word(w: &mut [u8; 4]) {
     let tmp = w[0];
     w[0] = w[1];
@@ -107,13 +111,19 @@ fn rot_word(w: &mut [u8; 4]) {
     w[3] = tmp;
 }
 
+// sub_word operation.  This is used in generating the key schedule.
 fn sub_word(w: &mut [u8; 4]) {
     for i in 0..4 {
         w[i] = SBOX[((w[i] & 0xf0) >> 4) as usize][(w[i] & 0x0f) as usize];
     }
 }
 
-fn compute_key_schedule(key: &[u8], keylength: usize, w: &mut [[u8; 4]]) {
+/// Derive the key schedule from the input key, which may be 16, 24 or
+/// 32 bytes in length.  The length of `w` depends on the key length.
+/// On return, `w` contains the round keys (10 for AES-128, 12 for
+/// AES-192 and 14 for AES-256).
+fn compute_key_schedule(key: &[u8], w: &mut [[u8; 4]]) {
+    let keylength = key.len();
     let keywords = keylength / 4;
     let mut rcon = 0x01;
     for i in 0..keylength {
@@ -139,7 +149,8 @@ fn compute_key_schedule(key: &[u8], keylength: usize, w: &mut [[u8; 4]]) {
     }
 }
 
-fn add_round_key(state: &mut [[u8; 4]], w: &[[u8;4]]) {
+/// XOR the round key `w` with the state.
+fn add_round_key(state: &mut [[u8; 4]; 4], w: &[[u8;4]]) {
     for c in 0..4 {
         for r in 0..4 {
             state[r][c] = state[r][c] ^ w[c][r];
@@ -147,6 +158,7 @@ fn add_round_key(state: &mut [[u8; 4]], w: &[[u8;4]]) {
     }
 }
 
+/// Perform SBOX substitution on the state.
 fn sub_bytes(state: &mut [[u8; 4]]) {
     for r in 0..4 {
         for c in 0..4 {
@@ -156,6 +168,7 @@ fn sub_bytes(state: &mut [[u8; 4]]) {
     }
 }
 
+/// Perform the shift_rows operation on the state.
 fn shift_rows(state: &mut [[u8; 4]]) {
     let tmp = state[1][0];
     state[1][0] = state[1][1];
@@ -195,6 +208,7 @@ fn dot(xin: u8, y: u8) -> u8 {
     product
 }
 
+/// Perform the mix_columns operation on the state.
 fn mix_columns(s: &mut [[u8; 4]]) {
     let mut t = [0u8; 4];
     for c in 0..4 {
@@ -227,7 +241,7 @@ pub fn encrypt(key: &AesKey, input: &[u8; 16], output: &mut [u8; 16]) {
     }
 
     let nr = (keysize >> 2) + 6;
-    compute_key_schedule(&keybytes, keysize, &mut w);
+    compute_key_schedule(&keybytes, &mut w);
 
     add_round_key(&mut state, &w[0..4]);
 
@@ -246,6 +260,7 @@ pub fn encrypt(key: &AesKey, input: &[u8; 16], output: &mut [u8; 16]) {
     }
 }
 
+/// Inverse of the shift_rows operation, used in decryption.
 fn inv_shift_rows(state: &mut [[u8; 4]; 4]) {
     let tmp = state[1][2];
     state[1][2] = state[1][1];
@@ -267,6 +282,7 @@ fn inv_shift_rows(state: &mut [[u8; 4]; 4]) {
     state[3][3] = tmp;
 }
 
+/// Inverse of the sub_bytes operation, used in decryption.
 fn inv_sub_bytes(state: &mut [[u8; 4]; 4]) {
     for r in 0..4 {
         for c in 0..4 {
@@ -276,6 +292,7 @@ fn inv_sub_bytes(state: &mut [[u8; 4]; 4]) {
     }
 }
 
+/// Inverse of the mix_columns operation, used in decryption.
 fn inv_mix_columns(s: &mut [[u8; 4]; 4]) {
     let mut t = [0u8; 4];
     for c in 0..4 {
@@ -312,7 +329,7 @@ pub fn decrypt(key: &AesKey, input: &[u8; 16], output: &mut [u8; 16]) {
     }
 
     let nr = (keysize >> 2) + 6;
-    compute_key_schedule(&keybytes, keysize, &mut w);
+    compute_key_schedule(&keybytes, &mut w);
 
     add_round_key(&mut state, &w[nr*4..(nr+1)*4]);
 
@@ -331,7 +348,6 @@ pub fn decrypt(key: &AesKey, input: &[u8; 16], output: &mut [u8; 16]) {
             output[r + (4 * c)] = state[r][c];
         }
     }
-
 }
 
 #[cfg(test)]
