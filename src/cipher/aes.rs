@@ -10,6 +10,7 @@
 //! and PKI)", Wiley Publishing Inc., 2011.  The cipher modes EBC, CBC
 //! and CTR have been implemented from scratch.
 
+use std::collections::HashSet;
 use std::io::Cursor;
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 
@@ -583,12 +584,28 @@ pub fn decrypt_ctr(key: &AesKey, iv: &[u8; 16], ciphertext: &[u8]) -> Vec<u8> {
     result
 }
 
+pub fn detect_ecb(input: &[u8]) -> bool {
+    if input.len() % 16 != 0 {
+        return false;
+    }
+    
+    let mut m = HashSet::new();
+    for chunk in input.chunks(16) {
+        if m.contains(chunk) {
+            return true;
+        }
+        m.insert(chunk);
+    }
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::{encrypt, decrypt};
     use super::{encrypt_ecb, decrypt_ecb};
     use super::{encrypt_cbc, decrypt_cbc};
     use super::{encrypt_ctr, decrypt_ctr};
+    use super::{detect_ecb};
     use super::{AesKey, AesKey128};
     use ::codec;
 
@@ -876,4 +893,37 @@ mod tests {
         assert_eq!(&expected, &plaintext);
     }
 
+    #[test]
+    fn detect_ecb_0() {
+        let plaintext = b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA.\n";
+        let keybytes = codec::hex::decode("000102030405060708090a0b0c0d0e0f").unwrap();
+        let key = AesKey::Key128(AesKey128{key: to_byte_array_16(&keybytes)});
+            
+        let ciphertext = encrypt_ecb(&key, plaintext);
+        assert!(detect_ecb(&ciphertext));
+    }
+
+    #[test]
+    fn detect_ecb_1() {
+        let plaintext = b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA.\n";
+        let keybytes = codec::hex::decode("000102030405060708090a0b0c0d0e0f").unwrap();
+        let key = AesKey::Key128(AesKey128{key: to_byte_array_16(&keybytes)});
+        let iv = [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+            
+        let ciphertext = encrypt_cbc(&key, &iv, plaintext);
+        assert!(!detect_ecb(&ciphertext));
+    }
+
+    #[test]
+    fn detect_ecb_2() {
+        let plaintext = b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA.\n";
+        let keybytes = codec::hex::decode("000102030405060708090a0b0c0d0e0f").unwrap();
+        let key = AesKey::Key128(AesKey128{key: to_byte_array_16(&keybytes)});
+        let iv = [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+            
+        let ciphertext = encrypt_ctr(&key, &iv, plaintext);
+        assert!(!detect_ecb(&ciphertext));
+    }
 }

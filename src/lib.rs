@@ -19,9 +19,22 @@ pub mod cipher;
 pub mod padding;
 
 pub mod random {
+    use ::rand::Rand;
+    use ::rand::distributions::range::SampleRange;
+    
     pub fn fill_bytes(buffer: &mut [u8]) {
         use ::rand::Rng;
         let mut rng = ::rand::thread_rng();
         rng.fill_bytes(buffer);
+    }
+    pub fn gen<R: Rand>() -> R {
+        use ::rand::Rng;
+        let mut rng = ::rand::thread_rng();
+        rng.gen()
+    }
+    pub fn gen_range<R: Rand + PartialOrd + SampleRange>(low: R, high: R) -> R {
+        use ::rand::Rng;
+        let mut rng = ::rand::thread_rng();
+        rng.gen_range(low, high)
     }
 }
