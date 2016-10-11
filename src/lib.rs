@@ -7,6 +7,8 @@
 #[cfg(test)]
 #[macro_use]
 extern crate quickcheck;
+extern crate byteorder;
+extern crate rand;
 
 pub mod error;
 pub mod codec;
@@ -15,3 +17,11 @@ pub mod distance;
 pub mod language;
 pub mod cipher;
 pub mod padding;
+
+pub mod random {
+    pub fn fill_bytes(buffer: &mut [u8]) {
+        use ::rand::Rng;
+        let mut rng = ::rand::thread_rng();
+        rng.fill_bytes(buffer);
+    }
+}
