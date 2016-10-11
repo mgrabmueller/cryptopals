@@ -24,16 +24,13 @@ fn encryption_oracle(input: &[u8]) -> Vec<u8> {
     data.extend(prefix);
     data.extend(input);
     data.extend(suffix);
-//    println!("{}", ::cryptopals::codec::hex::encode(&data));
     if b {
         let res = aes::encrypt_ecb(&key, &data);
-//        println!("{}", ::cryptopals::codec::hex::encode(&res));
         res
     } else {
         let mut iv = [0u8; 16];
         random::fill_bytes(&mut iv[..]);
         let res = aes::encrypt_cbc(&key, &iv, &data);
-//        println!("{}", ::cryptopals::codec::hex::encode(&res));
         res
     }
 }
@@ -45,7 +42,9 @@ fn random_aes_key() -> aes::AesKey {
 }
 
 fn detect(trial: usize) {
-    let input = [0u8,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+    let input = [0u8,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                 0,0,0,0,0];
 
     let ciphertext = encryption_oracle(&input);
     if aes::detect_ecb(&ciphertext) {
