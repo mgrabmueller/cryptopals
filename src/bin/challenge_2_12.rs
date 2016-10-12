@@ -3,7 +3,7 @@
 
 extern crate cryptopals;
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::iter::repeat;
 
 use cryptopals::{codec};
@@ -23,7 +23,9 @@ fn encrypt(input: &[u8]) -> Vec<u8> {
     res
 }
 
-fn detect_block_size(input: &[u8]) -> usize {
+/// Detect the block size of the block cipher that was used to encrypt
+/// `input`.  We assume that ECB mode was used.
+fn detect_block_size() -> usize {
     let mut pad = Vec::new();
 
     let l1 = encrypt(&pad).len();
@@ -41,6 +43,26 @@ fn detect_block_size(input: &[u8]) -> usize {
     l2 - len1
 }
 
+fn make_dict(blocksize: usize, decoded_prefix: Vec<u8>) -> HashMap<Vec<u8>, u8> {
+    let pfx_len = decoded_prefix.len();
+    let mut hm = HashMap::new();
+    let mut v = Vec::with_capacity(blocksize);
+    v.extend(decoded_prefix.iter()
+             .skip(pfx_len - (blocksize-1)));
+    v.extend(b"?");
+
+    for u in 0usize..256 {
+        v[blocksize-1] = u as u8;
+        let mut ct = encrypt(&v);
+        let mut ct1 = ct.split_off(0);
+        ct1.truncate(blocksize);
+        hm.insert(ct1, u as u8);
+    }
+    hm
+}
+
+//82, R
+
 fn detect() {
     let input = [0u8,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
                  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -49,20 +71,50 @@ fn detect() {
     let ciphertext = encrypt(&input);
     if aes::detect_ecb(&ciphertext) {
         println!("ECB encrypted");
-        let blocksize = detect_block_size(&ciphertext);
+        let blocksize = detect_block_size();
         println!("Block size: {}", blocksize);
+        let ctx = encrypt(b"");
+        let blocks = ctx.len() / blocksize;
+        println!("Block count: {}", blocks);
 
-        let block: Vec<_> = repeat(b'A').take(blocksize).collect();
-        let test: Vec<_> = repeat(b' ').take(blocksize - 1).collect();
-        
-        let block1 = &encrypt(&test)[0..blocksize];
+        let mut decoded_prefix: Vec<u8> = repeat(b'A').take(blocksize).collect();
+        let mut pfx_offset = 1;
+        'outer:
+        for block_cnt in 0..blocks {
+            for i in 0..16 {
+
+                let hm = make_dict(blocksize, decoded_prefix.clone());
+                let cipher = {
+                    let test = &decoded_prefix[pfx_offset..pfx_offset+(blocksize-i-1)];
+
+                    encrypt(test)
+                };
+                let start = block_cnt*blocksize;
+                let block1 = &cipher[start..start+blocksize];
+                if let Some(plain) = hm.get(block1) {
+                    decoded_prefix.push(*plain);
+                    pfx_offset += 1;
+                } else {
+                    println!("Could not find block.");
+                    break 'outer;
+                }
+            }
+        }
+
+        println!("");
+        let padlen = decoded_prefix[decoded_prefix.len()-1] as usize;
+        let mut result: Vec<_> = decoded_prefix.into_iter().skip(blocksize).collect();
+        let reslen = result.len();
+        result.truncate(reslen - padlen);
+        println!("Decoded: {}", String::from_utf8_lossy(&result));
     } else {
         println!("NOT ECB encrypted - giving up!");
         return;
     }
-    println!("{}", codec::hex::encode(&ciphertext));
 }
 
+// ollin' in my 5.
+// ollin' in my 5.R|ollin' in my 5.?
 pub fn main() {
     detect();
 }
